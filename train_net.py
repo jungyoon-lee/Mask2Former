@@ -25,7 +25,8 @@ import torch
 import detectron2.utils.comm as comm
 from detectron2.checkpoint import DetectionCheckpointer
 from detectron2.config import get_cfg
-from detectron2.data import MetadataCatalog, build_detection_train_loader
+from detectron2.data import MetadataCatalog
+from mask2former.data.build import build_detection_train_loader
 from detectron2.engine import (
     DefaultTrainer,
     default_argument_parser,
@@ -56,6 +57,8 @@ from mask2former import (
     MaskFormerSemanticDatasetMapper,
     SemanticSegmentorWithTTA,
     add_maskformer2_config,
+    YTVISDatasetMapper,
+    build_combined_loader,
 )
 
 
@@ -148,29 +151,27 @@ class Trainer(DefaultTrainer):
 
     @classmethod
     def build_train_loader(cls, cfg):
-        # Semantic segmentation dataset mapper
-        if cfg.INPUT.DATASET_MAPPER_NAME == "mask_former_semantic":
-            mapper = MaskFormerSemanticDatasetMapper(cfg, True)
-            return build_detection_train_loader(cfg, mapper=mapper)
-        # Panoptic segmentation dataset mapper
-        elif cfg.INPUT.DATASET_MAPPER_NAME == "mask_former_panoptic":
-            mapper = MaskFormerPanopticDatasetMapper(cfg, True)
-            return build_detection_train_loader(cfg, mapper=mapper)
-        # Instance segmentation dataset mapper
-        elif cfg.INPUT.DATASET_MAPPER_NAME == "mask_former_instance":
-            mapper = MaskFormerInstanceDatasetMapper(cfg, True)
-            return build_detection_train_loader(cfg, mapper=mapper)
-        # coco instance segmentation lsj new baseline
-        elif cfg.INPUT.DATASET_MAPPER_NAME == "coco_instance_lsj":
-            mapper = COCOInstanceNewBaselineDatasetMapper(cfg, True)
-            return build_detection_train_loader(cfg, mapper=mapper)
-        # coco panoptic segmentation lsj new baseline
-        elif cfg.INPUT.DATASET_MAPPER_NAME == "coco_panoptic_lsj":
-            mapper = COCOPanopticNewBaselineDatasetMapper(cfg, True)
-            return build_detection_train_loader(cfg, mapper=mapper)
+        mappers = []
+        for d_i, dataset_name in enumerate(cfg.DATASETS.TRAIN):
+            if dataset_name.startswith('coco'):
+                mappers.append(COCOInstanceNewBaselineDatasetMapper(cfg, is_train=True))
+            elif dataset_name.startswith('ytvis') or dataset_name.startswith('ovis'):
+                mappers.append(YTVISDatasetMapper(cfg, is_train=True))
+            else:
+                raise NotImplementedError
+            
+        assert len(mappers) > 0, "No dataset is chosen!"
+
+        if len(mappers) == 1:
+            mapper = mappers[0]
+            return build_detection_train_loader(cfg, mapper=mapper, dataset_name=cfg.DATASETS.TRAIN[0])
         else:
-            mapper = None
-            return build_detection_train_loader(cfg, mapper=mapper)
+            loaders = [
+                build_detection_train_loader(cfg, mapper=mapper, dataset_name=dataset_name)
+                for mapper, dataset_name in zip(mappers, cfg.DATASETS.TRAIN)
+            ]
+            combined_data_loader = build_combined_loader(cfg, loaders, cfg.DATASETS.DATASET_RATIO)
+            return combined_data_loader
 
     @classmethod
     def build_lr_scheduler(cls, cfg, optimizer):
@@ -312,6 +313,13 @@ def main(args):
 
     trainer = Trainer(cfg)
     trainer.resume_or_load(resume=args.resume)
+
+    for name, para in trainer.model.backbone.named_parameters():
+        para.requires_grad = False
+
+    for name, para in trainer.model.sem_seg_head.pixel_decoder.named_parameters():
+        para.requires_grad = False
+        
     return trainer.train()
 
 

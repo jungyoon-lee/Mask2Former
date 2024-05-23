@@ -98,6 +98,15 @@ def add_maskformer2_config(cfg):
     cfg.INPUT.MIN_SCALE = 0.1
     cfg.INPUT.MAX_SCALE = 2.0
 
+    cfg.INPUT.AUGMENTATIONS = []
+
+    # LSJ
+    cfg.INPUT.LSJ_AUG = CN()
+    cfg.INPUT.LSJ_AUG.ENABLED = False
+    cfg.INPUT.LSJ_AUG.IMAGE_SIZE = 1024
+    cfg.INPUT.LSJ_AUG.MIN_SCALE = 0.1
+    cfg.INPUT.LSJ_AUG.MAX_SCALE = 2.0
+
     # MSDeformAttn encoder configs
     cfg.MODEL.SEM_SEG_HEAD.DEFORMABLE_TRANSFORMER_ENCODER_IN_FEATURES = ["res3", "res4", "res5"]
     cfg.MODEL.SEM_SEG_HEAD.DEFORMABLE_TRANSFORMER_ENCODER_N_POINTS = 4
@@ -112,3 +121,5 @@ def add_maskformer2_config(cfg):
     # Importance sampling parameter for PointRend point sampling during training. Parametr `beta` in
     # the original paper.
     cfg.MODEL.MASK_FORMER.IMPORTANCE_SAMPLE_RATIO = 0.75
+
+    cfg.DATASETS.DATASET_RATIO = []
